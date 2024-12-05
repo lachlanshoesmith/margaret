@@ -33,21 +33,25 @@ async fn fetch_notion_database(database_id: &str, token: &str) -> Result<String,
     Ok(response)
 }
 
-fn get_db_rows(db: &str) -> Result<Vec<Row>, Box<dyn Error>> {
+fn get_db_rows(db: &str) -> Result<Option<Vec<Row>>, Box<dyn Error>> {
     let body: Value = serde_json::from_str(db)?;
-    let mut rows: Vec<Row> = Vec::new();
-    if let Some(properties) = body.get("properties") {
-        if let Some(properties) = properties.as_object() {
-            for property in properties.values() {
-                rows.push(Row {
-                    id: property.get("id").unwrap().to_string(),
-                    name: property.get("name").unwrap().to_string(),
-                    row_type: property.get("type").unwrap().to_string(),
-                });
-            }
-        }
+    let properties = body.get("properties");
+    if properties.is_none() {
+        return Ok(None);
     }
-    Ok(rows)
+    let properties = properties.unwrap();
+    Ok(Some(
+        properties
+            .as_object()
+            .unwrap()
+            .values()
+            .map(|property| Row {
+                id: property.get("id").unwrap().to_string(),
+                name: property.get("name").unwrap().to_string(),
+                row_type: property.get("type").unwrap().to_string(),
+            })
+            .collect(),
+    ))
 }
 
 #[tokio::main]
