@@ -3,7 +3,7 @@ use std::{collections::HashMap, error::Error};
 
 use clap::Parser;
 use reqwest::{Client, Response, StatusCode};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 #[derive(Parser, Debug)]
@@ -80,6 +80,29 @@ impl SimpleResponse {
     }
 }
 
+#[derive(Debug, Deserialize)]
+struct Row {
+    archived: bool,
+    cover: Option<Value>,
+    created_by: Value,
+    created_time: String,
+    icon: Option<Value>,
+    id: String,
+    in_trash: bool,
+    last_edited_by: Value,
+    last_edited_time: String,
+    object: String,
+    parent: Option<Value>,
+    properties: Option<HashMap<String, Value>>,
+    url: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct DatabaseQueryResponse {
+    object: String,
+    results: Vec<Row>,
+}
+
 async fn response_to_result(res: Response) -> Result<SimpleResponse, ErrorResponse> {
     let status_body = SimpleResponse::from_response(res).await;
 
@@ -129,10 +152,10 @@ fn get_db_columns(db: &str) -> Result<Option<Vec<Column>>, Box<dyn Error>> {
     ))
 }
 
-async fn query_rows(
+async fn query_rows_by_column(
     credentials: &DatabaseCredentials,
     column: &Column,
-) -> Result<SimpleResponse, ErrorResponse> {
+) -> Result<Vec<Row>, ErrorResponse> {
     let client = Client::new();
     let url = format!(
         "https://api.notion.com/v1/databases/{}/query",
@@ -155,7 +178,11 @@ async fn query_rows(
         .send()
         .await;
 
-    response_to_result(response.unwrap()).await
+    let result = response_to_result(response.unwrap()).await?;
+    let body: DatabaseQueryResponse = serde_json::from_str(&result.body).unwrap();
+    let rows = body.results;
+
+    Ok(rows)
 }
 
 #[tokio::main]
@@ -182,7 +209,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
-    let row = query_rows(&credentials, email_col.unwrap()).await?;
-    println!("{}", row);
+    let row = query_rows_by_column(&credentials, email_col.unwrap()).await?;
+    println!("Rows: {:#?}", row);
     Ok(())
 }
