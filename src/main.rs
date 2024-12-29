@@ -26,17 +26,6 @@ struct DatabaseCredentials {
     token: String,
 }
 
-#[derive(Debug, Serialize)]
-struct RichTextColumnQuery {
-    is_not_empty: bool,
-}
-
-#[derive(Debug, Serialize)]
-struct SimpleColumnQuery<'a> {
-    property: &'a str,
-    rich_text: Option<RichTextColumnQuery>,
-}
-
 #[derive(Debug)]
 struct SimpleResponse {
     status: StatusCode,
@@ -241,6 +230,39 @@ struct DatabaseQueryResponse {
     results: Vec<Row>,
 }
 
+#[derive(Debug, Serialize, Default)]
+struct RichTextColumnFilter {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    contains: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    does_not_contain: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    is_empty: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    is_not_empty: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    starts_with: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ends_with: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    equals: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    does_not_equal: Option<String>,
+}
+
+#[derive(Debug, Serialize, Default)]
+struct ColumnFilter {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    rich_text: Option<RichTextColumnFilter>,
+}
+
+#[derive(Debug, Serialize)]
+struct QueryFilter<'a> {
+    property: &'a str,
+    #[serde(flatten)]
+    column_filter: ColumnFilter,
+}
+
 async fn response_to_result(res: Response) -> Result<SimpleResponse, ErrorResponse> {
     let status_body = SimpleResponse::from_response(res).await;
 
@@ -302,9 +324,14 @@ async fn query_column_values(
     let mut query_body = HashMap::new();
     query_body.insert(
         "filter",
-        SimpleColumnQuery {
+        QueryFilter {
             property: &column.name,
-            rich_text: Some(RichTextColumnQuery { is_not_empty: true }),
+            column_filter: ColumnFilter {
+                rich_text: Some(RichTextColumnFilter {
+                    is_not_empty: Some(true),
+                    ..Default::default()
+                }),
+            },
         },
     );
 
