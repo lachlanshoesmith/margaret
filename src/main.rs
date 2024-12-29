@@ -81,6 +81,60 @@ impl SimpleResponse {
 }
 
 #[derive(Debug, Deserialize)]
+struct Cell {
+    id: String,
+    #[serde(rename = "type")]
+    cell_type: String,
+    #[serde(flatten)]
+    block: Option<Blocks>,
+}
+
+#[derive(Debug, Deserialize)]
+struct Text {
+    content: String,
+    link: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+enum Blocks {
+    #[serde(rename = "rich_text")]
+    RichText(Vec<RichTextBlock>),
+    #[serde(rename = "checkbox")]
+    Checkbox(bool),
+}
+
+#[derive(Debug, Deserialize)]
+enum TextTypes {
+    #[serde(rename = "text")]
+    Text,
+    #[serde(rename = "equation")]
+    Equation,
+    #[serde(rename = "mention")]
+    Mention,
+}
+
+#[derive(Debug, Deserialize)]
+struct Expression {
+    expression: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct RichTextBlock {
+    #[serde(rename = "type")]
+    block_type: TextTypes,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    text: Option<Text>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    // TODO: handle mentions
+    mention: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    equation: Option<Expression>,
+    annotations: Value,
+    plain_text: String,
+    href: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 struct Row {
     archived: bool,
     cover: Option<Value>,
@@ -93,7 +147,7 @@ struct Row {
     last_edited_time: String,
     object: String,
     parent: Option<Value>,
-    properties: Option<HashMap<String, Value>>,
+    properties: Option<HashMap<String, Cell>>,
     url: String,
 }
 
