@@ -1,4 +1,5 @@
-use std::error::Error;
+use core::fmt;
+use std::{collections::HashMap, error::Error};
 
 use clap::Parser;
 use reqwest::{Client, Response, StatusCode};
@@ -24,15 +25,44 @@ struct DatabaseCredentials {
     token: String,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
+struct RichTextColumnQuery {
+    is_not_empty: bool,
+}
+
+#[derive(Debug, Serialize)]
 struct SimpleColumnQuery<'a> {
     property: &'a str,
+    rich_text: Option<RichTextColumnQuery>,
 }
 
 #[derive(Debug)]
 struct SimpleResponse {
     status: StatusCode,
     body: String,
+}
+
+impl fmt::Display for SimpleResponse {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{} (status {})", self.body, self.status)
+    }
+}
+
+#[derive(Debug)]
+struct ErrorResponse {
+    response: SimpleResponse,
+}
+
+impl fmt::Display for ErrorResponse {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.response)
+    }
+}
+
+impl Error for ErrorResponse {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        None
+    }
 }
 
 impl SimpleResponse {
@@ -50,19 +80,21 @@ impl SimpleResponse {
     }
 }
 
-async fn response_to_result(res: Response) -> Result<SimpleResponse, SimpleResponse> {
+async fn response_to_result(res: Response) -> Result<SimpleResponse, ErrorResponse> {
     let status_body = SimpleResponse::from_response(res).await;
 
     if status_body.status.is_success() {
         Ok(status_body)
     } else {
-        Err(status_body)
+        Err(ErrorResponse {
+            response: status_body,
+        })
     }
 }
 
 async fn fetch_notion_database(
     credentials: &DatabaseCredentials,
-) -> Result<SimpleResponse, SimpleResponse> {
+) -> Result<SimpleResponse, ErrorResponse> {
     let client = Client::new();
     let url = format!("https://api.notion.com/v1/databases/{}", credentials.id);
 
@@ -100,15 +132,20 @@ fn get_db_columns(db: &str) -> Result<Option<Vec<Column>>, Box<dyn Error>> {
 async fn query_rows(
     credentials: &DatabaseCredentials,
     column: &Column,
-) -> Result<SimpleResponse, SimpleResponse> {
+) -> Result<SimpleResponse, ErrorResponse> {
     let client = Client::new();
     let url = format!(
         "https://api.notion.com/v1/databases/{}/query",
         credentials.id
     );
-    let query_body = SimpleColumnQuery {
-        property: &column.name,
-    };
+    let mut query_body = HashMap::new();
+    query_body.insert(
+        "filter",
+        SimpleColumnQuery {
+            property: &column.name,
+            rich_text: Some(RichTextColumnQuery { is_not_empty: true }),
+        },
+    );
 
     let response = client
         .post(url)
@@ -138,8 +175,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
 
     let columns = columns.unwrap();
-
-    println!("{:#?}", columns);
 
     let email_col = columns.iter().find(|col| col.name == "Email");
     if email_col.is_none() {
