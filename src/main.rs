@@ -13,6 +13,7 @@ struct Args {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 struct Column {
     id: String,
     name: String,
@@ -72,15 +73,16 @@ impl SimpleResponse {
             body: res.text().await.unwrap(),
         }
     }
-    async fn from_error(err: reqwest::Error) -> Self {
-        SimpleResponse {
-            status: err.status().unwrap(),
-            body: err.to_string(),
-        }
-    }
+    // async fn from_error(err: reqwest::Error) -> Self {
+    //     SimpleResponse {
+    //         status: err.status().unwrap(),
+    //         body: err.to_string(),
+    //     }
+    // }
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct Cell {
     id: String,
     #[serde(rename = "type")]
@@ -90,12 +92,14 @@ struct Cell {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct Text {
     content: String,
     link: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct MultiSelectSelection {
     color: String,
     id: String,
@@ -103,11 +107,13 @@ struct MultiSelectSelection {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct UserEmail {
     email: String,
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct User {
     avatar_url: Option<String>,
     id: String,
@@ -119,6 +125,7 @@ struct User {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 enum Blocks {
     #[serde(rename = "rich_text")]
     RichText(Vec<RichText>),
@@ -147,11 +154,13 @@ enum TextTypes {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct Expression {
     expression: String,
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct RichTextAnnotations {
     bold: bool,
     code: bool,
@@ -162,6 +171,7 @@ struct RichTextAnnotations {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct RichText {
     #[serde(rename = "type")]
     block_type: TextTypes,
@@ -178,6 +188,7 @@ struct RichText {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct Row {
     archived: bool,
     cover: Option<Value>,
@@ -195,6 +206,7 @@ struct Row {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct DatabaseQueryResponse {
     object: String,
     results: Vec<Row>,
