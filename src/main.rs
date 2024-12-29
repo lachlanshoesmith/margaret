@@ -91,14 +91,14 @@ struct Cell {
     block: Option<Blocks>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[allow(dead_code)]
 struct Text {
     content: String,
     link: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[allow(dead_code)]
 struct MultiSelectSelection {
     color: String,
@@ -106,13 +106,13 @@ struct MultiSelectSelection {
     name: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[allow(dead_code)]
 struct UserEmail {
     email: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[allow(dead_code)]
 struct User {
     avatar_url: Option<String>,
@@ -124,7 +124,7 @@ struct User {
     user_type: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[allow(dead_code)]
 enum Blocks {
     #[serde(rename = "rich_text")]
@@ -143,7 +143,7 @@ enum Blocks {
     CreatedTime(String),
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 enum TextTypes {
     #[serde(rename = "text")]
     Text,
@@ -153,13 +153,13 @@ enum TextTypes {
     Mention,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[allow(dead_code)]
 struct Expression {
     expression: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[allow(dead_code)]
 struct RichTextAnnotations {
     bold: bool,
@@ -170,7 +170,7 @@ struct RichTextAnnotations {
     underline: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[allow(dead_code)]
 struct RichText {
     #[serde(rename = "type")]
@@ -261,10 +261,10 @@ fn get_db_columns(db: &str) -> Result<Option<Vec<Column>>, Box<dyn Error>> {
     ))
 }
 
-async fn query_rows_by_column(
+async fn query_column_values(
     credentials: &DatabaseCredentials,
     column: &Column,
-) -> Result<Vec<Row>, ErrorResponse> {
+) -> Result<Vec<Blocks>, ErrorResponse> {
     let client = Client::new();
     let url = format!(
         "https://api.notion.com/v1/databases/{}/query",
@@ -290,8 +290,16 @@ async fn query_rows_by_column(
     let result = response_to_result(response.unwrap()).await?;
     let body: DatabaseQueryResponse = serde_json::from_str(&result.body).unwrap();
     let rows = body.results;
+    let blocks: Vec<Blocks> = rows
+        .iter()
+        .map(|row: &Row| {
+            let properties = row.properties.as_ref().unwrap();
+            let cell = properties.get(&column.name).unwrap();
+            cell.block.as_ref().unwrap().clone()
+        })
+        .collect();
 
-    Ok(rows)
+    Ok(blocks)
 }
 
 #[tokio::main]
@@ -318,7 +326,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
-    let row = query_rows_by_column(&credentials, email_col.unwrap()).await?;
-    println!("Rows: {:#?}", row);
+    let cells = query_column_values(&credentials, email_col.unwrap()).await?;
+    println!("Cells: {:#?}", cells);
     Ok(())
 }
