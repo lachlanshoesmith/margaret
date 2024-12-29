@@ -96,11 +96,44 @@ struct Text {
 }
 
 #[derive(Debug, Deserialize)]
+struct MultiSelectSelection {
+    color: String,
+    id: String,
+    name: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct UserEmail {
+    email: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct User {
+    avatar_url: Option<String>,
+    id: String,
+    name: Option<String>,
+    object: String,
+    person: Option<UserEmail>,
+    #[serde(rename = "type")]
+    user_type: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 enum Blocks {
     #[serde(rename = "rich_text")]
-    RichText(Vec<RichTextBlock>),
+    RichText(Vec<RichText>),
     #[serde(rename = "checkbox")]
     Checkbox(bool),
+    #[serde(rename = "email")]
+    Email(String),
+    #[serde(rename = "title")]
+    Title(Vec<RichText>),
+    #[serde(rename = "multi_select")]
+    MultiSelect(Vec<MultiSelectSelection>),
+    #[serde(rename = "created_by")]
+    CreatedBy(User),
+    #[serde(rename = "created_time")]
+    CreatedTime(String),
 }
 
 #[derive(Debug, Deserialize)]
@@ -119,7 +152,17 @@ struct Expression {
 }
 
 #[derive(Debug, Deserialize)]
-struct RichTextBlock {
+struct RichTextAnnotations {
+    bold: bool,
+    code: bool,
+    color: String,
+    italic: bool,
+    strikethrough: bool,
+    underline: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct RichText {
     #[serde(rename = "type")]
     block_type: TextTypes,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -129,7 +172,7 @@ struct RichTextBlock {
     mention: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     equation: Option<Expression>,
-    annotations: Value,
+    annotations: RichTextAnnotations,
     plain_text: String,
     href: Option<String>,
 }
@@ -138,7 +181,7 @@ struct RichTextBlock {
 struct Row {
     archived: bool,
     cover: Option<Value>,
-    created_by: Value,
+    created_by: User,
     created_time: String,
     icon: Option<Value>,
     id: String,
