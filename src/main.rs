@@ -124,6 +124,12 @@ struct User {
     user_type: Option<String>,
 }
 
+impl fmt::Display for User {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
 #[derive(Debug, Deserialize, Clone)]
 #[allow(dead_code)]
 enum Blocks {
@@ -134,13 +140,36 @@ enum Blocks {
     #[serde(rename = "email")]
     Email(String),
     #[serde(rename = "title")]
-    Title(Vec<RichText>),
+    Title(RichText),
     #[serde(rename = "multi_select")]
     MultiSelect(Vec<MultiSelectSelection>),
     #[serde(rename = "created_by")]
     CreatedBy(User),
     #[serde(rename = "created_time")]
     CreatedTime(String),
+}
+
+impl fmt::Display for Blocks {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let value = match self {
+            Blocks::RichText(texts) => texts
+                .iter()
+                .map(|text| text.plain_text.clone())
+                .collect::<Vec<String>>()
+                .join("\n"),
+            Blocks::Checkbox(value) => value.to_string(),
+            Blocks::Email(value) => value.to_string(),
+            Blocks::Title(value) => value.plain_text.clone(),
+            Blocks::MultiSelect(selections) => selections
+                .iter()
+                .map(|selection| selection.name.clone())
+                .collect::<Vec<String>>()
+                .join(", "),
+            Blocks::CreatedBy(value) => value.to_string(),
+            Blocks::CreatedTime(value) => value.to_string(),
+        };
+        write!(f, "{}", value)
+    }
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -326,7 +355,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
-    let cells = query_column_values(&credentials, email_col.unwrap()).await?;
-    println!("Cells: {:#?}", cells);
+    let blocks = query_column_values(&credentials, email_col.unwrap()).await?;
+    let emails: Vec<String> = blocks.iter().map(|block| block.to_string()).collect();
+    println!("{:#?}", emails);
+
     Ok(())
 }
