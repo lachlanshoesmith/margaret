@@ -27,8 +27,8 @@ pub struct ColumnFilter {
 }
 
 #[derive(Debug, Serialize)]
-pub struct QueryFilter<'a> {
-    pub property: &'a str,
+pub struct QueryFilter {
+    pub property: String,
     #[serde(flatten)]
     pub column_filter: ColumnFilter,
 }

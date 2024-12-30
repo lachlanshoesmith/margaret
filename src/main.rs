@@ -1,14 +1,14 @@
-use core::fmt;
 use std::{collections::HashMap, error::Error};
 
 use clap::Parser;
-use reqwest::{Client, Response, StatusCode};
+use reqwest::Client;
 use serde_json::Value;
 
 use margaret::models::{
     blocks::Blocks,
-    database::{DatabaseQueryResponse, Row},
+    database::{fetch_notion_database, DatabaseCredentials, DatabaseQueryResponse, Row},
     filters::{ColumnFilter, QueryFilter, RichTextColumnFilter},
+    responses::{response_to_result, ErrorResponse},
 };
 
 #[derive(Parser, Debug)]
@@ -23,84 +23,6 @@ struct Column {
     id: String,
     name: String,
     column_type: String,
-}
-
-#[derive(Debug)]
-struct DatabaseCredentials {
-    id: String,
-    token: String,
-}
-
-#[derive(Debug)]
-struct SimpleResponse {
-    status: StatusCode,
-    body: String,
-}
-
-impl fmt::Display for SimpleResponse {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} (status {})", self.body, self.status)
-    }
-}
-
-#[derive(Debug)]
-struct ErrorResponse {
-    response: SimpleResponse,
-}
-
-impl fmt::Display for ErrorResponse {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.response)
-    }
-}
-
-impl Error for ErrorResponse {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        None
-    }
-}
-
-impl SimpleResponse {
-    async fn from_response(res: Response) -> Self {
-        SimpleResponse {
-            status: res.status(),
-            body: res.text().await.unwrap(),
-        }
-    }
-    // async fn from_error(err: reqwest::Error) -> Self {
-    //     SimpleResponse {
-    //         status: err.status().unwrap(),
-    //         body: err.to_string(),
-    //     }
-    // }
-}
-
-async fn response_to_result(res: Response) -> Result<SimpleResponse, ErrorResponse> {
-    let status_body = SimpleResponse::from_response(res).await;
-
-    if status_body.status.is_success() {
-        Ok(status_body)
-    } else {
-        Err(ErrorResponse {
-            response: status_body,
-        })
-    }
-}
-
-async fn fetch_notion_database(
-    credentials: &DatabaseCredentials,
-) -> Result<SimpleResponse, ErrorResponse> {
-    let client = Client::new();
-    let url = format!("https://api.notion.com/v1/databases/{}", credentials.id);
-
-    let response = client
-        .get(url)
-        .header("Authorization", format!("Bearer {}", credentials.token))
-        .header("Notion-Version", "2022-06-28")
-        .send()
-        .await;
-
-    response_to_result(response.unwrap()).await
 }
 
 fn get_db_columns(db: &str) -> Result<Option<Vec<Column>>, Box<dyn Error>> {
@@ -127,6 +49,7 @@ fn get_db_columns(db: &str) -> Result<Option<Vec<Column>>, Box<dyn Error>> {
 async fn query_column_values(
     credentials: &DatabaseCredentials,
     column: &Column,
+    query: &QueryFilter,
 ) -> Result<Vec<Blocks>, ErrorResponse> {
     let client = Client::new();
     let url = format!(
@@ -134,18 +57,7 @@ async fn query_column_values(
         credentials.id
     );
     let mut query_body = HashMap::new();
-    query_body.insert(
-        "filter",
-        QueryFilter {
-            property: &column.name,
-            column_filter: ColumnFilter {
-                rich_text: Some(RichTextColumnFilter {
-                    is_not_empty: Some(true),
-                    ..Default::default()
-                }),
-            },
-        },
-    );
+    query_body.insert("filter", query);
 
     let response = client
         .post(url)
@@ -194,7 +106,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
-    let blocks = query_column_values(&credentials, email_col.unwrap()).await?;
+    let query = QueryFilter {
+        property: "Email".to_string(),
+        column_filter: ColumnFilter {
+            rich_text: Some(RichTextColumnFilter {
+                is_not_empty: Some(true),
+                ..Default::default()
+            }),
+        },
+    };
+
+    let blocks = query_column_values(&credentials, email_col.unwrap(), &query).await?;
     let emails: Vec<String> = blocks.iter().map(|block| block.to_string()).collect();
     println!("{:#?}", emails);
 

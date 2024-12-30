@@ -1,10 +1,13 @@
 use std::collections::HashMap;
 
+use reqwest::Client;
 use serde::Deserialize;
 use serde_json::Value;
 
 use crate::models::blocks::Blocks;
 use crate::models::users::User;
+
+use super::responses::{response_to_result, ErrorResponse, SimpleResponse};
 
 #[derive(Debug, Deserialize)]
 pub struct Cell {
@@ -36,4 +39,26 @@ pub struct Row {
 pub struct DatabaseQueryResponse {
     pub object: String,
     pub results: Vec<Row>,
+}
+
+#[derive(Debug)]
+pub struct DatabaseCredentials {
+    pub id: String,
+    pub token: String,
+}
+
+pub async fn fetch_notion_database(
+    credentials: &DatabaseCredentials,
+) -> Result<SimpleResponse, ErrorResponse> {
+    let client = Client::new();
+    let url = format!("https://api.notion.com/v1/databases/{}", credentials.id);
+
+    let response = client
+        .get(url)
+        .header("Authorization", format!("Bearer {}", credentials.token))
+        .header("Notion-Version", "2022-06-28")
+        .send()
+        .await;
+
+    response_to_result(response.unwrap()).await
 }
