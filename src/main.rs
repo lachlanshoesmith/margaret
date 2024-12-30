@@ -106,15 +106,21 @@ async fn main() -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
-    let query = QueryFilter {
-        property: "Email".to_string(),
-        column_filter: ColumnFilter {
+    let query = QueryFilter::And(
+        Box::new(QueryFilter::ColumnFilter(ColumnFilter {
+            property: "Email".to_string(),
             rich_text: Some(RichTextColumnFilter {
                 is_not_empty: Some(true),
                 ..Default::default()
             }),
-        },
-    };
+            ..Default::default()
+        })),
+        Box::new(QueryFilter::ColumnFilter(ColumnFilter {
+            property: "Interview?".to_string(),
+            checkbox: Some(true),
+            ..Default::default()
+        })),
+    );
 
     let blocks = query_column_values(&credentials, email_col.unwrap(), &query).await?;
     let emails: Vec<String> = blocks.iter().map(|block| block.to_string()).collect();

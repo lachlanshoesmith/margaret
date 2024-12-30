@@ -22,13 +22,16 @@ pub struct RichTextColumnFilter {
 
 #[derive(Debug, Serialize, Default)]
 pub struct ColumnFilter {
+    pub property: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rich_text: Option<RichTextColumnFilter>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub checkbox: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
-pub struct QueryFilter {
-    pub property: String,
-    #[serde(flatten)]
-    pub column_filter: ColumnFilter,
+pub enum QueryFilter {
+    And(Box<QueryFilter>, Box<QueryFilter>),
+    Or(Box<QueryFilter>, Box<QueryFilter>),
+    ColumnFilter(ColumnFilter),
 }
