@@ -14,7 +14,7 @@ pub enum Blocks {
     #[serde(rename = "email")]
     Email(String),
     #[serde(rename = "title")]
-    Title(RichText),
+    Title(Vec<RichText>),
     #[serde(rename = "multi_select")]
     MultiSelect(Vec<MultiSelectSelection>),
     #[serde(rename = "created_by")]
@@ -33,7 +33,11 @@ impl fmt::Display for Blocks {
                 .join("\n"),
             Blocks::Checkbox(value) => value.to_string(),
             Blocks::Email(value) => value.to_string(),
-            Blocks::Title(value) => value.plain_text.clone(),
+            Blocks::Title(texts) => texts
+                .iter()
+                .map(|text| text.plain_text.clone())
+                .collect::<Vec<String>>()
+                .join("\n"),
             Blocks::MultiSelect(selections) => selections
                 .iter()
                 .map(|selection| selection.name.clone())

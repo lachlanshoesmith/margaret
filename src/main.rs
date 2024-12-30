@@ -1,4 +1,4 @@
-use margaret::models::filters::get_filter_conditions;
+use margaret::models::filters::{get_filter_conditions, RelationColumnFilter};
 use std::io::{self, Write};
 use std::{collections::HashMap, error::Error};
 use struct_iterable::Iterable;
@@ -78,7 +78,16 @@ async fn query_column_values(
         .map(|row: &Row| {
             let properties = row.properties.as_ref().unwrap();
             let cell = properties.get(&column.name).unwrap();
-            cell.block.as_ref().unwrap().clone()
+            cell.block
+                .as_ref()
+                .unwrap_or_else(|| {
+                    panic!(
+                        "Failed to get block in column '{}' of type '{}' - do I know how to handle that type?",
+                        column.name,
+                        column.column_type
+                    )
+                })
+                .clone()
         })
         .collect();
 
@@ -110,20 +119,34 @@ async fn main() -> Result<(), Box<dyn Error>> {
     );
 
     for column in columns.iter() {
-        println!("- {}", column.name);
+        println!("- {} <{}>", column.name, column.column_type);
     }
 
-    let mut query_column;
+    let mut column_to_print: Option<&Column>;
     let mut filter: ColumnFilter;
 
     loop {
+        loop {
+            print!("\nWhich column do you want to print? ");
+            let mut column_to_print_name = String::new();
+            io::stdout().flush().unwrap();
+            io::stdin().read_line(&mut column_to_print_name).unwrap();
+            let column_to_print_name = column_to_print_name.trim().to_string();
+
+            column_to_print = columns.iter().find(|col| col.name == column_to_print_name);
+            if column_to_print.is_none() {
+                println!("The column '{}' does not exist.", column_to_print_name);
+                continue;
+            }
+            break;
+        }
         print!("\nWhich column do you want to query? ");
         let mut query_column_name = String::new();
         io::stdout().flush().unwrap();
         io::stdin().read_line(&mut query_column_name).unwrap();
         let query_column_name = query_column_name.trim().to_string();
 
-        query_column = columns.iter().find(|col| col.name == query_column_name);
+        let query_column = columns.iter().find(|col| col.name == query_column_name);
         if query_column.is_none() {
             println!("The column '{}' does not exist.", query_column_name);
             continue;
@@ -136,13 +159,43 @@ async fn main() -> Result<(), Box<dyn Error>> {
         );
 
         let all_filter_conditions = get_filter_conditions();
-        for (field_name, _field_value) in RichTextColumnFilter::default().iter() {
-            println!(
-                "- {0:?} <{1}>",
-                field_name,
-                all_filter_conditions.get(field_name).unwrap()
-            );
-        }
+
+        match query_column.column_type.as_str() {
+            "checkbox" => {
+                for (field_name, _field_value) in CheckboxColumnFilter::default().iter() {
+                    println!(
+                        "- {0:?} <{1}>",
+                        field_name,
+                        all_filter_conditions.get(field_name).unwrap()
+                    );
+                }
+            }
+            "rich_text" => {
+                for (field_name, _field_value) in RichTextColumnFilter::default().iter() {
+                    println!(
+                        "- {0:?} <{1}>",
+                        field_name,
+                        all_filter_conditions.get(field_name).unwrap()
+                    );
+                }
+            }
+            "relation" => {
+                for (field_name, _field_value) in RelationColumnFilter::default().iter() {
+                    println!(
+                        "- {0:?} <{1}>",
+                        field_name,
+                        all_filter_conditions.get(field_name).unwrap()
+                    );
+                }
+            }
+            _ => {
+                println!(
+                    "The column type '{}' is not supported.",
+                    query_column.column_type
+                );
+                continue;
+            }
+        };
 
         let mut filter_conditions: HashMap<String, String> = HashMap::new();
         let mut i = 0;
@@ -197,12 +250,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     does_not_contain: filter_conditions.get("does_not_contain").cloned(),
                     is_empty: filter_conditions
                         .get("is_empty")
-                        .cloned()
-                        .map(|value| matches!(value.as_str(), "true")),
+                        .map(|value| value == "true")
+                        .or(Some(false)),
                     is_not_empty: filter_conditions
                         .get("is_not_empty")
-                        .cloned()
-                        .map(|value| matches!(value.as_str(), "true")),
+                        .map(|value| value == "true")
+                        .or(Some(false)),
                     starts_with: filter_conditions.get("starts_with").cloned(),
                     ends_with: filter_conditions.get("ends_with").cloned(),
                     equals: filter_conditions.get("equals").cloned(),
@@ -221,6 +274,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         .map(|value| matches!(value.as_str(), "true")),
                 })
             }
+            "relation" => {
+                filter.relation = Some(RelationColumnFilter {
+                    is_empty: filter_conditions
+                        .get("is_empty")
+                        .cloned()
+                        .map(|value| matches!(value.as_str(), "true")),
+                    is_not_empty: filter_conditions
+                        .get("is_not_empty")
+                        .cloned()
+                        .map(|value| matches!(value.as_str(), "true")),
+                    contains: filter_conditions.get("contains").cloned(),
+                    does_not_contain: filter_conditions.get("does_not_contain").cloned(),
+                })
+            }
             _ => {
                 println!(
                     "The column type '{}' is not supported.",
@@ -229,17 +296,26 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
         };
 
-        println!("I've built:");
-        println!("{:?}", filter);
+        print!("Would you like to chain this filter with another (AND/OR/n)? ");
+        let mut chain = String::new();
+        io::stdout().flush().unwrap();
+        io::stdin().read_line(&mut chain).unwrap();
+        let chain = chain.trim().to_string();
 
-        break;
+        if chain == "n" {
+            break;
+        }
     }
 
-    let query = QueryFilter::ColumnFilter(filter);
+    let query = QueryFilter::ColumnFilter(Box::new(filter));
 
-    let blocks = query_column_values(&credentials, query_column.unwrap(), &query).await?;
+    print!("\nFetching data from Notion...");
+    io::stdout().flush().unwrap();
+    let blocks = query_column_values(&credentials, column_to_print.unwrap(), &query).await?;
     let emails: Vec<String> = blocks.iter().map(|block| block.to_string()).collect();
-    println!("{:#?}", emails);
-
+    print!("\r{}\n\n", "=".repeat(28));
+    for email in emails {
+        println!("'{}'", email);
+    }
     Ok(())
 }
