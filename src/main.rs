@@ -7,7 +7,7 @@ use serde_json::Value;
 use margaret::models::{
     blocks::Blocks,
     database::{fetch_notion_database, DatabaseCredentials, DatabaseQueryResponse, Row},
-    filters::{ColumnFilter, QueryFilter, RichTextColumnFilter},
+    filters::{CheckboxColumnFilter, ColumnFilter, QueryFilter, RichTextColumnFilter},
     responses::{response_to_result, ErrorResponse},
 };
 
@@ -117,7 +117,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
         })),
         Box::new(QueryFilter::ColumnFilter(ColumnFilter {
             property: "Interview?".to_string(),
-            checkbox: Some(true),
+            checkbox: Some(CheckboxColumnFilter {
+                equals: Some(true),
+                ..Default::default()
+            }),
             ..Default::default()
         })),
     );
