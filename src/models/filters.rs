@@ -13,8 +13,8 @@ pub fn get_filter_conditions() -> HashMap<String, String> {
             "does_not_contain".to_string(),
             "String or i32 (context dependent)".to_string(),
         ),
-        ("is_empty".to_string(), "bool".to_string()),
-        ("is_not_empty".to_string(), "bool".to_string()),
+        ("is_empty".to_string(), "true".to_string()),
+        ("is_not_empty".to_string(), "true".to_string()),
         ("starts_with".to_string(), "String".to_string()),
         ("ends_with".to_string(), "String".to_string()),
         (
