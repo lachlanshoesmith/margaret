@@ -114,7 +114,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     );
                 }
                 println!("- \"follow\" <true>");
-                println!("💁 If this relation links to a database and you want to query a property from that database, choose 'follow'.")
+                println!("💁 If this relation links to a database and you want to query a property from that database, choose 'follow'.");
+                println!("⚠️ Note that your Notion integration must have permission to read the page the relation links to.");
             }
             _ => {
                 println!(
@@ -246,13 +247,23 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     if filter_conditions.contains_key("follow") {
         print!(
-            "\rFollowing relations (this may take some time)...{}",
+            "\rFetching and following relations (this may take some time)...{}",
             " ".repeat(28)
         );
         io::stdout().flush().unwrap();
-        for block in &blocks {
+
+        let mut relations: &Vec<Blocks>;
+        if column_to_print.unwrap().column_type == "relation" {
+            relations = &blocks;
+        } else {
+            todo!();
+        }
+
+        for block in relations {
             if let Blocks::Relation(_) = block {
                 follow_relations(&credentials.token, block).await?;
+            } else {
+                println!("Block is not a relation! {:?}", block);
             }
         }
     }

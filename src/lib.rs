@@ -2,7 +2,7 @@ use std::{collections::HashMap, error::Error};
 
 use models::{
     blocks::{Blocks, Relation},
-    database::{fetch_notion_database, Column, DatabaseCredentials, DatabaseQueryResponse, Row},
+    database::{Column, DatabaseCredentials, DatabaseQueryResponse, Row},
     filters::QueryFilter,
     responses::{response_to_result, ErrorResponse},
 };
@@ -14,7 +14,13 @@ pub mod models;
 pub async fn follow_relations(token: &str, block: &Blocks) -> Result<(), Box<dyn Error>> {
     if let Blocks::Relation(relations) = block {
         for relation in relations {
-            let cols = follow_relation(token, relation).await?;
+            let cols = follow_relation(
+                token,
+                &Relation {
+                    id: relation.id.replace("-", ""),
+                },
+            )
+            .await?;
             println!("{:#?}", cols);
         }
         Ok(())
@@ -23,17 +29,13 @@ pub async fn follow_relations(token: &str, block: &Blocks) -> Result<(), Box<dyn
     }
 }
 
-async fn follow_relation(
-    token: &str,
-    relation: &Relation,
-) -> Result<Option<Vec<Column>>, Box<dyn Error>> {
+async fn follow_relation(token: &str, relation: &Relation) -> Result<Value, Box<dyn Error>> {
     let credentials = DatabaseCredentials {
         id: relation.id.clone(),
         token: token.to_string(),
     };
-    let db = fetch_notion_database(&credentials).await;
-    let cols = get_db_columns(&db.unwrap().body)?;
-    Ok(cols)
+    let res = get_page(&credentials).await?;
+    Ok(res)
 }
 
 pub fn get_db_columns(db: &str) -> Result<Option<Vec<Column>>, Box<dyn Error>> {
@@ -55,6 +57,22 @@ pub fn get_db_columns(db: &str) -> Result<Option<Vec<Column>>, Box<dyn Error>> {
             })
             .collect(),
     ))
+}
+
+pub async fn get_page(credentials: &DatabaseCredentials) -> Result<Value, ErrorResponse> {
+    let client = Client::new();
+    let url = format!("https://api.notion.com/v1/pages/{}/", credentials.id);
+
+    let response = client
+        .get(url)
+        .header("Authorization", format!("Bearer {}", credentials.token))
+        .header("Notion-Version", "2022-06-28")
+        .send()
+        .await;
+
+    let result = response_to_result(response.unwrap()).await?;
+    let body = serde_json::from_str(&result.body).unwrap();
+    Ok(body)
 }
 
 pub async fn query_column_values(
