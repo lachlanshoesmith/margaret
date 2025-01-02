@@ -1,97 +1,22 @@
+use margaret::models::database::Column;
 use margaret::models::filters::{get_filter_conditions, RelationColumnFilter};
+use margaret::{follow_relations, get_db_columns, query_column_values};
 use std::io::{self, Write};
 use std::{collections::HashMap, error::Error};
 use struct_iterable::Iterable;
 
 use clap::Parser;
-use reqwest::Client;
-use serde_json::Value;
 
 use margaret::models::{
     blocks::Blocks,
-    database::{fetch_notion_database, DatabaseCredentials, DatabaseQueryResponse, Row},
+    database::{fetch_notion_database, DatabaseCredentials},
     filters::{CheckboxColumnFilter, ColumnFilter, QueryFilter, RichTextColumnFilter},
-    responses::{response_to_result, ErrorResponse},
 };
 
 #[derive(Parser, Debug)]
 struct Args {
     notion_db: String,
     integration_secret: String,
-}
-
-#[derive(Debug)]
-#[allow(dead_code)]
-struct Column {
-    id: String,
-    name: String,
-    column_type: String,
-}
-
-fn get_db_columns(db: &str) -> Result<Option<Vec<Column>>, Box<dyn Error>> {
-    let body: Value = serde_json::from_str(db)?;
-    let properties = body.get("properties");
-    if properties.is_none() {
-        return Ok(None);
-    }
-    let properties = properties.unwrap();
-    Ok(Some(
-        properties
-            .as_object()
-            .unwrap()
-            .values()
-            .map(|property| Column {
-                id: property.get("id").unwrap().as_str().unwrap().to_string(),
-                name: property.get("name").unwrap().as_str().unwrap().to_string(),
-                column_type: property.get("type").unwrap().as_str().unwrap().to_string(),
-            })
-            .collect(),
-    ))
-}
-
-async fn query_column_values(
-    credentials: &DatabaseCredentials,
-    column: &Column,
-    query: &QueryFilter,
-) -> Result<Vec<Blocks>, ErrorResponse> {
-    let client = Client::new();
-    let url = format!(
-        "https://api.notion.com/v1/databases/{}/query",
-        credentials.id
-    );
-    let mut query_body = HashMap::new();
-    query_body.insert("filter", query);
-
-    let response = client
-        .post(url)
-        .header("Authorization", format!("Bearer {}", credentials.token))
-        .header("Notion-Version", "2022-06-28")
-        .json(&query_body)
-        .send()
-        .await;
-
-    let result = response_to_result(response.unwrap()).await?;
-    let body: DatabaseQueryResponse = serde_json::from_str(&result.body).unwrap();
-    let rows = body.results;
-    let blocks: Vec<Blocks> = rows
-        .iter()
-        .map(|row: &Row| {
-            let properties = row.properties.as_ref().unwrap();
-            let cell = properties.get(&column.name).unwrap();
-            cell.block
-                .as_ref()
-                .unwrap_or_else(|| {
-                    panic!(
-                        "Failed to get block in column '{}' of type '{}' - do I know how to handle that type?",
-                        column.name,
-                        column.column_type
-                    )
-                })
-                .clone()
-        })
-        .collect();
-
-    Ok(blocks)
 }
 
 #[tokio::main]
@@ -124,6 +49,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let mut column_to_print: Option<&Column>;
     let mut filter: ColumnFilter;
+    let mut filter_conditions: HashMap<String, String> = HashMap::new();
 
     loop {
         loop {
@@ -187,6 +113,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         all_filter_conditions.get(field_name).unwrap()
                     );
                 }
+                println!("- \"follow\" <true>");
+                println!("💁 If this relation links to a database and you want to query a property from that database, choose 'follow'.")
             }
             _ => {
                 println!(
@@ -197,7 +125,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
         };
 
-        let mut filter_conditions: HashMap<String, String> = HashMap::new();
         let mut i = 0;
         loop {
             print!("\nWhich filter condition do you want to apply? ");
@@ -286,7 +213,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         .map(|value| matches!(value.as_str(), "true")),
                     contains: filter_conditions.get("contains").cloned(),
                     does_not_contain: filter_conditions.get("does_not_contain").cloned(),
-                })
+                });
+
+                if filter_conditions.contains_key("follow") {
+                    filter.relation.as_mut().unwrap().is_not_empty = Some(true);
+                };
             }
             _ => {
                 println!(
@@ -312,8 +243,22 @@ async fn main() -> Result<(), Box<dyn Error>> {
     print!("\nFetching data from Notion...");
     io::stdout().flush().unwrap();
     let blocks = query_column_values(&credentials, column_to_print.unwrap(), &query).await?;
+
+    if filter_conditions.contains_key("follow") {
+        print!(
+            "\rFollowing relations (this may take some time)...{}",
+            " ".repeat(28)
+        );
+        io::stdout().flush().unwrap();
+        for block in &blocks {
+            if let Blocks::Relation(_) = block {
+                follow_relations(&credentials.token, block).await?;
+            }
+        }
+    }
+
     let emails: Vec<String> = blocks.iter().map(|block| block.to_string()).collect();
-    print!("\r{}\n\n", "=".repeat(28));
+    print!("\r{}\n\n", "=".repeat(50));
     for email in emails {
         println!("'{}'", email);
     }

@@ -21,6 +21,8 @@ pub enum Blocks {
     CreatedBy(User),
     #[serde(rename = "created_time")]
     CreatedTime(String),
+    #[serde(rename = "relation")]
+    Relation(Vec<Relation>),
 }
 
 impl fmt::Display for Blocks {
@@ -45,6 +47,11 @@ impl fmt::Display for Blocks {
                 .join(", "),
             Blocks::CreatedBy(value) => value.to_string(),
             Blocks::CreatedTime(value) => value.to_string(),
+            Blocks::Relation(ids) => ids
+                .iter()
+                .map(|ids| ids.id.clone())
+                .collect::<Vec<String>>()
+                .join(", "),
         };
         write!(f, "{}", value)
     }
@@ -107,4 +114,10 @@ pub struct MultiSelectSelection {
 #[allow(dead_code)]
 pub struct Expression {
     expression: String,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+#[allow(dead_code)]
+pub struct Relation {
+    pub id: String,
 }

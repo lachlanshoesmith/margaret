@@ -62,3 +62,11 @@ pub async fn fetch_notion_database(
 
     response_to_result(response.unwrap()).await
 }
+
+#[derive(Debug)]
+#[allow(dead_code)]
+pub struct Column {
+    pub id: String,
+    pub name: String,
+    pub column_type: String,
+}
