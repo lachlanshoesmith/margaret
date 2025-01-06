@@ -1,4 +1,7 @@
-use std::{collections::HashMap, error::Error};
+use std::{
+    collections::{HashMap, HashSet},
+    error::Error,
+};
 
 use models::{
     blocks::{Blocks, Relation},
@@ -9,21 +12,17 @@ use models::{
 use reqwest::Client;
 use serde_json::Value;
 
+use futures::future::try_join_all;
+
 pub mod models;
 
-pub async fn follow_relations(token: &str, block: &Blocks) -> Result<(), Box<dyn Error>> {
+pub async fn follow_relations(token: &str, block: &Blocks) -> Result<Vec<Row>, Box<dyn Error>> {
     if let Blocks::Relation(relations) = block {
-        for relation in relations {
-            let cols = follow_relation(
-                token,
-                &Relation {
-                    id: relation.id.replace("-", ""),
-                },
-            )
-            .await?;
-            println!("{:#?}", cols);
-        }
-        Ok(())
+        Ok(try_join_all(relations.iter().map(|relation| async {
+            let body: Value = follow_relation(token, relation).await?;
+            Ok::<Row, Box<dyn Error>>(serde_json::from_value::<Row>(body)?)
+        }))
+        .await?)
     } else {
         Err("The block provided doesn't represent a relation.".into())
     }
@@ -57,6 +56,19 @@ pub fn get_db_columns(db: &str) -> Result<Option<Vec<Column>>, Box<dyn Error>> {
             })
             .collect(),
     ))
+}
+
+pub fn row_to_cols(row: &Row) -> HashSet<Column> {
+    let mut cols: HashSet<Column> = HashSet::new();
+    let properties = row.properties.as_ref().unwrap();
+    for (key, value) in properties.iter() {
+        cols.insert(Column {
+            id: key.to_string(),
+            name: key.to_string(),
+            column_type: value.cell_type.clone(),
+        });
+    }
+    cols
 }
 
 pub async fn get_page(credentials: &DatabaseCredentials) -> Result<Value, ErrorResponse> {

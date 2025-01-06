@@ -1,6 +1,6 @@
 use margaret::models::database::Column;
 use margaret::models::filters::{get_filter_conditions, RelationColumnFilter};
-use margaret::{follow_relations, get_db_columns, query_column_values};
+use margaret::{follow_relations, get_db_columns, query_column_values, row_to_cols};
 use std::io::{self, Write};
 use std::{collections::HashMap, error::Error};
 use struct_iterable::Iterable;
@@ -260,8 +260,21 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
 
         for block in relations {
+            // TODO: currently doesn't handle each block properly
+            // and how they may have different cols
+            // instead, the check just looks at the relation's
+            // database itself, rather than comparing between relations
+            // databases. So this doesn't work.
             if let Blocks::Relation(_) = block {
-                follow_relations(&credentials.token, block).await?;
+                let rows = follow_relations(&credentials.token, block).await?;
+                let cols = row_to_cols(rows.first().unwrap());
+                rows.iter().for_each(|row| {
+                    let this_row_cols = row_to_cols(row);
+                    if cols != this_row_cols {
+                        panic!("Relations that don't link to the same database (or databases of the same structure) as other rows are not supported.");
+                    }
+                });
+                println!("{:#?}", cols);
             } else {
                 println!("Block is not a relation! {:?}", block);
             }

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{cmp, collections::HashMap};
 
 use reqwest::Client;
 use serde::Deserialize;
@@ -63,7 +63,7 @@ pub async fn fetch_notion_database(
     response_to_result(response.unwrap()).await
 }
 
-#[derive(Debug)]
+#[derive(Debug, Hash, PartialEq, cmp::Eq)]
 #[allow(dead_code)]
 pub struct Column {
     pub id: String,
