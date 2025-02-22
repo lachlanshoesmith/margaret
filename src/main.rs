@@ -1,17 +1,15 @@
+use margaret::models::database::{follow_relation, Column, Relation};
 use margaret::models::filters::{get_filter_conditions, RelationColumnFilter};
+use margaret::{get_db_columns, query_column_values};
 use std::io::{self, Write};
 use std::{collections::HashMap, error::Error};
 use struct_iterable::Iterable;
 
 use clap::Parser;
-use reqwest::Client;
-use serde_json::Value;
 
 use margaret::models::{
-    blocks::Blocks,
-    database::{fetch_notion_database, DatabaseCredentials, DatabaseQueryResponse, Row},
+    database::{fetch_notion_database, DatabaseCredentials},
     filters::{CheckboxColumnFilter, ColumnFilter, QueryFilter, RichTextColumnFilter},
-    responses::{response_to_result, ErrorResponse},
 };
 
 #[derive(Parser, Debug)]
@@ -20,82 +18,14 @@ struct Args {
     integration_secret: String,
 }
 
-#[derive(Debug)]
-#[allow(dead_code)]
-struct Column {
-    id: String,
-    name: String,
-    column_type: String,
+struct RelationColumn {
+    related_columns: HashMap<String, Vec<Column>>,
+    relation: Relation,
 }
 
-fn get_db_columns(db: &str) -> Result<Option<Vec<Column>>, Box<dyn Error>> {
-    let body: Value = serde_json::from_str(db)?;
-    let properties = body.get("properties");
-    if properties.is_none() {
-        return Ok(None);
-    }
-    let properties = properties.unwrap();
-    Ok(Some(
-        properties
-            .as_object()
-            .unwrap()
-            .values()
-            .map(|property| Column {
-                id: property.get("id").unwrap().as_str().unwrap().to_string(),
-                name: property.get("name").unwrap().as_str().unwrap().to_string(),
-                column_type: property.get("type").unwrap().as_str().unwrap().to_string(),
-            })
-            .collect(),
-    ))
-}
-
-async fn query_column_values(
-    credentials: &DatabaseCredentials,
-    columns: &Vec<&Column>,
-    query: &QueryFilter,
-) -> Result<Vec<HashMap<String, Blocks>>, ErrorResponse> {
-    let client = Client::new();
-    let url = format!(
-        "https://api.notion.com/v1/databases/{}/query",
-        credentials.id
-    );
-    let mut query_body = HashMap::new();
-    query_body.insert("filter", query);
-
-    let response = client
-        .post(url)
-        .header("Authorization", format!("Bearer {}", credentials.token))
-        .header("Notion-Version", "2022-06-28")
-        .json(&query_body)
-        .send()
-        .await;
-
-    let result = response_to_result(response.unwrap()).await?;
-    let body: DatabaseQueryResponse = serde_json::from_str(&result.body).unwrap();
-    let rows = body.results;
-    let blocks: Vec<HashMap<String, Blocks>> = rows
-        .iter()
-        .map(|row: &Row| {
-            let properties = row.properties.as_ref().unwrap();
-            let mut columns_and_values = HashMap::new();
-            columns.iter().for_each(|column| {
-                let cell = properties.get(&column.name).unwrap();
-                columns_and_values.insert(column.name.clone(), cell.block
-                    .as_ref()
-                    .unwrap_or_else(|| {
-                        panic!(
-                            "Failed to get block in column '{}' of type '{}' - do I know how to handle that type?",
-                            column.name,
-                            column.column_type
-                        )
-                    })
-                    .clone());
-            });
-            columns_and_values
-        })
-        .collect();
-
-    Ok(blocks)
+struct ColumnToPrint {
+    column: Column,
+    relation: Option<RelationColumn>,
 }
 
 #[tokio::main]
@@ -127,6 +57,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let mut columns_to_print: Vec<&Column> = Vec::new();
     let mut filter: ColumnFilter;
+    let mut filter_conditions: HashMap<String, String> = HashMap::new();
 
     loop {
         let mut i = 0;
@@ -156,11 +87,24 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 continue;
             }
 
-            if column_to_print.unwrap().column_type == "relation" {
-                println!("relation spotted");
+            let column_to_print = column_to_print.unwrap();
+            if column_to_print.column_type == "relation" {
+                let relation = column_to_print.relation.as_ref().unwrap();
+                let relation_res = follow_relation(&credentials.token, relation).await;
+                let related_columns = get_db_columns(relation_res.unwrap().body.as_str())
+                    .unwrap()
+                    .unwrap();
+                println!(
+                    "I found the following columns in the database {}:",
+                    relation.database_id
+                );
+
+                for column in related_columns.iter() {
+                    println!("- {} <{}>", column.name, column.column_type);
+                }
             }
 
-            columns_to_print.push(column_to_print.unwrap());
+            columns_to_print.push(column_to_print);
             i += 1;
         }
         print!("\nWhich column do you want to query? ");
@@ -202,25 +146,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     );
                 }
             }
-            "relation" => {
-                for (field_name, _field_value) in RelationColumnFilter::default().iter() {
-                    println!(
-                        "- {0:?} <{1}>",
-                        field_name,
-                        all_filter_conditions.get(field_name).unwrap()
-                    );
-                }
-            }
             _ => {
                 println!(
-                    "The column type '{}' is not supported.",
+                    "The column type '{}' is not supported for querying.",
                     query_column.column_type
                 );
                 continue;
             }
         };
 
-        let mut filter_conditions: HashMap<String, String> = HashMap::new();
         let mut i = 0;
         loop {
             print!("\nWhich filter condition do you want to apply? ");
@@ -309,7 +243,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         .map(|value| matches!(value.as_str(), "true")),
                     contains: filter_conditions.get("contains").cloned(),
                     does_not_contain: filter_conditions.get("does_not_contain").cloned(),
-                })
+                });
+
+                if filter_conditions.contains_key("follow") {
+                    filter.relation.as_mut().unwrap().is_not_empty = Some(true);
+                };
             }
             _ => {
                 println!(

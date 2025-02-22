@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{cmp, collections::HashMap, error::Error};
 
 use reqwest::Client;
 use serde::Deserialize;
@@ -61,4 +61,33 @@ pub async fn fetch_notion_database(
         .await;
 
     response_to_result(response.unwrap()).await
+}
+
+pub async fn follow_relation(
+    token: &str,
+    relation: &Relation,
+) -> Result<SimpleResponse, Box<dyn Error>> {
+    let credentials = DatabaseCredentials {
+        id: relation.database_id.to_string(),
+        token: token.to_string(),
+    };
+    let res = fetch_notion_database(&credentials).await?;
+    Ok(res)
+}
+
+#[derive(Debug, Hash, PartialEq, cmp::Eq, Deserialize)]
+#[allow(dead_code)]
+pub struct Relation {
+    pub database_id: String,
+    pub synced_property_id: Option<String>,
+    pub synced_property_name: Option<String>,
+}
+
+#[derive(Debug, Hash, PartialEq, cmp::Eq)]
+#[allow(dead_code)]
+pub struct Column {
+    pub id: String,
+    pub name: String,
+    pub column_type: String,
+    pub relation: Option<Relation>,
 }

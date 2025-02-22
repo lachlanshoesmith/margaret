@@ -25,6 +25,7 @@ pub fn get_filter_conditions() -> HashMap<String, String> {
             "does_not_equal".to_string(),
             "String, i32, or bool (context dependent)".to_string(),
         ),
+        ("follow".to_string(), "true".to_string()),
     ]
     .into_iter()
     .collect::<HashMap<String, String>>()
