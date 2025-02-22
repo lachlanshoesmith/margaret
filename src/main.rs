@@ -51,9 +51,9 @@ fn get_db_columns(db: &str) -> Result<Option<Vec<Column>>, Box<dyn Error>> {
 
 async fn query_column_values(
     credentials: &DatabaseCredentials,
-    column: &Column,
+    columns: &Vec<&Column>,
     query: &QueryFilter,
-) -> Result<Vec<Blocks>, ErrorResponse> {
+) -> Result<Vec<HashMap<String, Blocks>>, ErrorResponse> {
     let client = Client::new();
     let url = format!(
         "https://api.notion.com/v1/databases/{}/query",
@@ -73,21 +73,25 @@ async fn query_column_values(
     let result = response_to_result(response.unwrap()).await?;
     let body: DatabaseQueryResponse = serde_json::from_str(&result.body).unwrap();
     let rows = body.results;
-    let blocks: Vec<Blocks> = rows
+    let blocks: Vec<HashMap<String, Blocks>> = rows
         .iter()
         .map(|row: &Row| {
             let properties = row.properties.as_ref().unwrap();
-            let cell = properties.get(&column.name).unwrap();
-            cell.block
-                .as_ref()
-                .unwrap_or_else(|| {
-                    panic!(
-                        "Failed to get block in column '{}' of type '{}' - do I know how to handle that type?",
-                        column.name,
-                        column.column_type
-                    )
-                })
-                .clone()
+            let mut columns_and_values = HashMap::new();
+            columns.iter().for_each(|column| {
+                let cell = properties.get(&column.name).unwrap();
+                columns_and_values.insert(column.name.clone(), cell.block
+                    .as_ref()
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "Failed to get block in column '{}' of type '{}' - do I know how to handle that type?",
+                            column.name,
+                            column.column_type
+                        )
+                    })
+                    .clone());
+            });
+            columns_and_values
         })
         .collect();
 
@@ -102,7 +106,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
         token: args.integration_secret,
     };
     let db = fetch_notion_database(&credentials).await?;
-
     let columns = get_db_columns(&db.body)?;
 
     if columns.is_none() {
@@ -122,23 +125,43 @@ async fn main() -> Result<(), Box<dyn Error>> {
         println!("- {} <{}>", column.name, column.column_type);
     }
 
-    let mut column_to_print: Option<&Column>;
+    let mut columns_to_print: Vec<&Column> = Vec::new();
     let mut filter: ColumnFilter;
 
     loop {
+        let mut i = 0;
         loop {
             print!("\nWhich column do you want to print? ");
+            if i == 1 {
+                print!("\n(Leave blank to stop adding columns): ");
+            }
+
             let mut column_to_print_name = String::new();
             io::stdout().flush().unwrap();
             io::stdin().read_line(&mut column_to_print_name).unwrap();
             let column_to_print_name = column_to_print_name.trim().to_string();
 
-            column_to_print = columns.iter().find(|col| col.name == column_to_print_name);
+            let column_to_print = columns.iter().find(|col| col.name == column_to_print_name);
+
+            if column_to_print_name.is_empty() {
+                if i == 0 {
+                    println!("Please enter a column name.");
+                    continue;
+                };
+                break;
+            }
+
             if column_to_print.is_none() {
                 println!("The column '{}' does not exist.", column_to_print_name);
                 continue;
             }
-            break;
+
+            if column_to_print.unwrap().column_type == "relation" {
+                println!("relation spotted");
+            }
+
+            columns_to_print.push(column_to_print.unwrap());
+            i += 1;
         }
         print!("\nWhich column do you want to query? ");
         let mut query_column_name = String::new();
@@ -311,11 +334,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     print!("\nFetching data from Notion...");
     io::stdout().flush().unwrap();
-    let blocks = query_column_values(&credentials, column_to_print.unwrap(), &query).await?;
-    let emails: Vec<String> = blocks.iter().map(|block| block.to_string()).collect();
+    let columns_and_values = query_column_values(&credentials, &columns_to_print, &query).await?;
     print!("\r{}\n\n", "=".repeat(28));
-    for email in emails {
-        println!("'{}'", email);
+    for row in columns_and_values.iter() {
+        for column in columns_to_print.iter() {
+            println!("{}: {}", column.name, row.get(&column.name).unwrap());
+        }
+        println!();
     }
     Ok(())
 }

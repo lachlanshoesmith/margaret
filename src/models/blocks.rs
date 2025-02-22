@@ -21,6 +21,8 @@ pub enum Blocks {
     CreatedBy(User),
     #[serde(rename = "created_time")]
     CreatedTime(String),
+    #[serde(rename = "number")]
+    Number(f32),
 }
 
 impl fmt::Display for Blocks {
@@ -45,6 +47,7 @@ impl fmt::Display for Blocks {
                 .join(", "),
             Blocks::CreatedBy(value) => value.to_string(),
             Blocks::CreatedTime(value) => value.to_string(),
+            Blocks::Number(value) => value.to_string(),
         };
         write!(f, "{}", value)
     }
